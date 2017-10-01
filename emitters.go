@@ -31,37 +31,26 @@ func emitBattery(c chan string) {
 	if _, err := os.Stat(battpath + "/charge_full"); err != nil {
 		return
 	}
+	var s int
 	for {
-		i, s := 0, 0
-		full, err := ReadIntFrom(battpath + "/charge_full")
+		full, err := readInt(battpath + "/charge_full")
 		if err != nil {
 			panic(err)
 		}
-		now, err := ReadIntFrom(battpath + "/charge_now")
+		now, err := readInt(battpath + "/charge_now")
 		if err != nil {
 			panic(err)
 		}
-		status, err := ReadStringFrom(battpath + "/status")
+		status, err := readString(battpath + "/status")
 		if err != nil {
 			panic(err)
 		}
+		s = 0
 		if status == "Charging" {
 			s = 1
 		}
 		pc := now * 100 / full
-		switch {
-		case 0 <= pc && pc <= 19:
-			i = 0
-		case 20 <= pc && pc <= 39:
-			i = 1
-		case 40 <= pc && pc <= 59:
-			i = 2
-		case 60 <= pc && pc <= 79:
-			i = 3
-		case 80 <= pc && pc <= 100:
-			i = 4
-		}
-		b := fmt.Sprintf("batt\t%d\t%d\t%d", pc, i, s)
+		b := fmt.Sprintf("batt\t%d\t%d\t%d", pc, pc/20, s)
 		c <- b
 		time.Sleep(10 * time.Second)
 	}
@@ -73,7 +62,7 @@ func emitThermal(c chan string) {
 	}
 	i := 0
 	for {
-		temp, err := ReadIntFrom(thermalpath + "/temp")
+		temp, err := readInt(thermalpath + "/temp")
 		if err != nil {
 			panic(err)
 		}
@@ -104,7 +93,6 @@ func emitWifi(c chan string) {
 		qual float64
 	)
 	for {
-		i := 0
 		if o, err = exec.Command("iwgetid", "-r").Output(); err != nil {
 			c <- fmt.Sprintf("wifi\t-\t0")
 			time.Sleep(time.Minute) // TODO
@@ -112,40 +100,29 @@ func emitWifi(c chan string) {
 		}
 		ssid := strings.TrimSpace(string(o))
 		if o, err = exec.Command("iwconfig", iface).Output(); err != nil {
-			panic(err)
+			c <- fmt.Sprintf("wifi\t-\t0")
+			time.Sleep(time.Minute) // TODO
+			continue
 		}
 		stats := strings.TrimSpace(string(o))
 		r, _ := regexp.Compile(`Quality=([0-9/]+)`)
 		res := r.FindStringSubmatch(stats)
-		if len(res) < 2 {
-			qual = 0.0
-		} else {
+		qual = 0.0
+		if len(res) >= 2 {
 			els := strings.Split(res[1], "/")
 			qmin, _ := strconv.Atoi(els[0])
 			qmax, _ := strconv.Atoi(els[1])
 			qual = float64(qmin) / float64(qmax) * 100.0
 		}
 		lq := int(qual)
-		switch {
-		case 0 <= lq && lq <= 19:
-			i = 0
-		case 20 <= lq && lq <= 39:
-			i = 1
-		case 40 <= lq && lq <= 59:
-			i = 2
-		case 60 <= lq && lq <= 79:
-			i = 3
-		case 80 <= lq && lq <= 100:
-			i = 4
-		}
-		c <- fmt.Sprintf("wifi\t%s\t%d\t%d", ssid, lq, i)
+		c <- fmt.Sprintf("wifi\t%s\t%d\t%d", ssid, lq, lq/20)
 		time.Sleep(time.Minute)
 	}
 }
 
 func emitLoad(c chan string) {
 	for {
-		la, err := ReadStringFrom("/proc/loadavg")
+		la, err := readString("/proc/loadavg")
 		if err != nil {
 			panic(err)
 		}
@@ -155,7 +132,7 @@ func emitLoad(c chan string) {
 	}
 }
 
-func ReadIntFrom(path string) (i int, err error) {
+func readInt(path string) (i int, err error) {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return
@@ -165,7 +142,7 @@ func ReadIntFrom(path string) (i int, err error) {
 	return
 }
 
-func ReadStringFrom(path string) (s string, err error) {
+func readString(path string) (s string, err error) {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return
